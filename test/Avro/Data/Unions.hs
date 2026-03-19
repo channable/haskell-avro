@@ -51,7 +51,8 @@ deriveAvroFromByteString [r|
           "name" : "Bar",
           "fields" : [
             { "name" : "stuff",
-              "type" : "string"
+              "type" : "string",
+              "logicalType" : "string-custom-logical-type"
             },
             { "name" : "things",
               "type" : "Foo"
@@ -77,7 +78,8 @@ deriveAvroFromByteString [r|
           "items" : "string"
         },
         { "type" : "map",
-          "values" : "long"
+          "values" : "long",
+          "logicalType" : "map-custom-logical-type"
         }
       ]
     },

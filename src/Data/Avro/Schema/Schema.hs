@@ -519,6 +519,16 @@ parseSchemaJSON :: Maybe TypeName
                 -> Parser Schema
 parseSchemaJSON context = \case
   A.String s -> case s of
+    -- Spec 1.12.0 says "Primitive type names are also defined type names". Meaning that they can be
+    -- referred to by-name as @"int"@ or regularly as @{"type": "int"}@. And furthermore:
+    --
+    --     Primitive type names (null, boolean, int, long, float, double, bytes, string) have no
+    --     namespace and their names may not be defined in any namespace.
+    --
+    --     Complex types (record, enum, array, map, fixed) have no namespace, but their names (as
+    --     well as union) are permitted to be reused as type names. This can be confusing to the
+    --     human reader, but is always unambiguous for binary serialization. Due to the limitations
+    --     of JSON encoding, it is a best practice to use a namespace when using these names.
     "null"                   -> return Null
     "boolean"                -> return Boolean
     "int"                    -> return $ Int Nothing
@@ -527,6 +537,9 @@ parseSchemaJSON context = \case
     "double"                 -> return Double
     "bytes"                  -> return $ Bytes Nothing
     "string"                 -> return $ String Nothing
+    -- Apparently we treat these logical types similarly as primitive types. I don't know why we do
+    -- this, since the spec doesn't seem to mention such a thing (could be in an older version?).
+    -- This does seem to be consistent with the 'typeName' function.
     "uuid"                   -> return $ String (Just UUID)
     "date"                   -> return $ Int (Just Date)
     "time-millis"            -> return $ Int (Just TimeMillis)
@@ -541,49 +554,8 @@ parseSchemaJSON context = \case
       Union <$> V.mapM (parseSchemaJSON context) arr
     | otherwise        -> fail "Unions must have at least one type."
   A.Object o -> do
-    logicalType :: Maybe Text <- o .:? "logicalType"
     ty                        <- o .: "type"
-
-    case logicalType of
-      Just "decimal" -> do
-        prec <- o .: "precision"
-        sc   <- fromMaybe 0 <$> o .:? "scale"
-        let dec = Decimal prec sc
-        case ty of
-          "bytes" -> pure $ Bytes (Just (DecimalB dec))
-          "fixed" -> (\fx -> fx { logicalTypeF = Just (DecimalF dec) }) <$> parseFixed o
-          "int"   -> pure $ Int (Just (DecimalI dec))
-          "long"  -> pure $ Long (Just (DecimalL dec))
-          s       -> fail $ "Unsupported underlying type: " <> T.unpack s
-      Just "uuid" -> case ty of
-          "string" -> pure $ String (Just UUID)
-          s        -> fail $ "Unsupported underlying type: " <> T.unpack s
-      Just "date" -> case ty of
-          "int" -> pure $ Int (Just Date)
-          s     -> fail $ "Unsupported underlying type: " <> T.unpack s
-      Just "time-millis" -> case ty of
-          "int" -> pure $ Int (Just TimeMillis)
-          s     -> fail $ "Unsupported underlying type: " <> T.unpack s
-      Just "time-micros" -> case ty of
-          "long" -> pure $ Long (Just TimeMicros)
-          s      -> fail $ "Unsupported underlying type: " <> T.unpack s
-      Just "timestamp-millis" -> case ty of
-          "long" -> pure $ Long (Just TimestampMillis)
-          s      -> fail $ "Unsupported underlying type: " <> T.unpack s
-      Just "timestamp-micros" -> case ty of
-          "long" -> pure $ Long (Just TimestampMicros)
-          s      -> fail $ "Unsupported underlying type: " <> T.unpack s
-      Just "local-timestamp-millis" -> case ty of
-          "long" -> pure $ Long (Just LocalTimestampMillis)
-          s      -> fail $ "Unsupported underlying type: " <> T.unpack s
-      Just "local-timestamp-micros" -> case ty of
-          "long" -> pure $ Long (Just LocalTimestampMicros)
-          s      -> fail $ "Unsupported underlying type: " <> T.unpack s
-      Just "duration" -> case ty of
-          "fixed" -> (\fx -> fx { logicalTypeF = Just Duration }) <$> parseFixed o
-          s       -> fail $ "Unsupported underlying type: " <> T.unpack s
-      Just _  -> parseJSON (A.String ty)
-      Nothing -> case ty of
+    case ty of
         "map"    -> Map <$> (parseSchemaJSON context =<< o .: "values")
         "array"  -> Array <$> (parseSchemaJSON context =<< o .: "items")
         "record" -> do
@@ -602,27 +574,75 @@ parseSchemaJSON context = \case
           doc         <- o .:? "doc"
           symbols     <- o .: "symbols"
           pure $ mkEnum enumName aliases doc symbols
-        "fixed"   -> parseFixed o
+        "fixed"   -> do
+          name         <- o .: "name"
+          namespace    <- o .:? "namespace"
+          let fixedName = mkTypeName context name namespace
+          aliases      <- mkAliases fixedName <$> (o .:? "aliases" .!= [])
+          size         <- o .: "size"
+          logicalType <- withLogicalType o $ \case
+            "decimal" -> Just . DecimalF <$> parseDecimal o
+            -- duration should only work with size 12, use a pattern guard here?
+            "duration" -> pure $ Just Duration
+            -- spec also has 'uuid' here, but only when the fixed has size 16
+            _t -> pure Nothing
+          pure $ Fixed fixedName aliases size logicalType
         "null"    -> pure Null
         "boolean" -> pure Boolean
-        "int"     -> pure $ Int Nothing
-        "long"    -> pure $ Long Nothing
+        "int"     -> do
+          logicalType <- withLogicalType o $ \case
+            "time-millis" -> pure $ Just TimeMillis
+            "date" -> pure $ Just Date
+            "decimal" ->
+              -- Decimal logical type for int is actually not in spec..
+              Just . DecimalI <$> parseDecimal o
+            _t -> pure Nothing
+          pure $ Int logicalType
+        "long"    -> do
+          logicalType <- withLogicalType o $ \case
+            "time-micros" -> pure $ Just TimeMicros
+            "timestamp-millis" -> pure $ Just TimestampMillis
+            "timestamp-micros" -> pure $ Just TimestampMicros
+            -- Spec also has "timestamp-nanos"
+            "local-timestamp-millis" -> pure $ Just LocalTimestampMillis
+            "local-timestamp-micros" -> pure $ Just LocalTimestampMicros
+            -- Spec also has "local-timestamp-nanos"
+            "decimal" ->
+              -- Decimal logical type for int is actually not in spec..
+              Just . DecimalL <$> parseDecimal o
+            _t -> pure Nothing
+          pure $ Long logicalType
         "float"   -> pure Float
         "double"  -> pure Double
-        "bytes"   -> pure $ Bytes Nothing
-        "string"  -> pure $ String Nothing
+        "bytes"   -> do
+          logicalType <- withLogicalType o $ \case
+            "decimal" -> Just . DecimalB <$> parseDecimal o
+            _t -> pure Nothing
+          pure $ Bytes logicalType
+        "string"  -> do
+          logicalType <- withLogicalType o $ \case
+            "uuid" -> pure $ Just UUID
+            _t -> pure Nothing
+          pure $ String logicalType
         s        -> fail $ "Unrecognized object type: " <> T.unpack s
 
   invalid    -> typeMismatch "Invalid JSON for Avro Schema" invalid
 
   where
-    parseFixed o = do
-      name         <- o .: "name"
-      namespace    <- o .:? "namespace"
-      let fixedName = mkTypeName context name namespace
-      aliases      <- mkAliases fixedName <$> (o .:? "aliases" .!= [])
-      size         <- o .: "size"
-      pure $ Fixed fixedName aliases size Nothing
+    withLogicalType :: A.Object -> (Text -> Parser (Maybe lt)) -> Parser (Maybe lt)
+    withLogicalType o f = do
+      -- There's actually three cases:
+      --   1. No logical type given
+      --   2. Unknown logical type
+      --   3. Known logical type (one of the cases we define in this library)
+      -- For the moment, the schema types do not distinguish between cases 1 and 2.
+      o .:? "logicalType" >>= \case
+        Nothing -> pure Nothing -- case 1
+        Just lt -> f lt -- cases 2 and 3
+
+    parseDecimal o =
+      Decimal <$> o .: "precision" <*> (fromMaybe 0 <$> o .:? "scale")
+
 
 -- | Parse aliases, inferring the namespace based on the type being aliases.
 mkAliases :: TypeName
