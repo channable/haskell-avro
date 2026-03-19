@@ -449,51 +449,39 @@ instance Hashable TypeName where
   hashWithSalt s (renderFullname -> name) =
     hashWithSalt (hashWithSalt s ("AvroTypeName" :: Text)) name
 
--- |Get the name of the type.  In the case of unions, get the name of the
--- first value in the union schema.
+-- |Get the name of the type. Unions are not allowed.
+--
+-- Spec 1.12.0 says:
+--
+--     Primitive type names (null, boolean, int, long, float, double, bytes, string) have no
+--     namespace and their names may not be defined in any namespace.
+--
+--     Complex types (record, enum, array, map, fixed) have no namespace, but their names (as
+--     well as union) are permitted to be reused as type names. This can be confusing to the
+--     human reader, but is always unambiguous for binary serialization. Due to the limitations
+--     of JSON encoding, it is a best practice to use a namespace when using these names.
 typeName :: Schema -> Text
-typeName bt =
-  case bt of
-    Null            -> "null"
-    Boolean         -> "boolean"
-    Int Nothing     -> "int"
-    Int (Just (DecimalI d))
-                    -> decimalName d
-    Int (Just Date) -> "date"
-    Int (Just TimeMillis)
-                    -> "time-millis"
-    Long Nothing    -> "long"
-    Long (Just (DecimalL d))
-                    -> decimalName d
-    Long (Just TimeMicros)
-                    -> "time-micros"
-    Long (Just TimestampMillis)
-                    -> "timestamp-millis"
-    Long (Just TimestampMicros)
-                    -> "timestamp-micros"
-    Long (Just LocalTimestampMillis)
-                    -> "local-timestamp-millis"
-    Long (Just LocalTimestampMicros)
-                    -> "local-timestamp-micros"
-    Float           -> "float"
-    Double          -> "double"
-    Bytes Nothing   -> "bytes"
-    Bytes (Just (DecimalB d))
-                    -> decimalName d
-    String Nothing  -> "string"
-    String (Just UUID)
-                    -> "uuid"
-    Array _         -> "array"
-    Map   _         -> "map"
-    NamedType name  -> renderFullname name
-    Union ts        -> typeName (V.head ts)
-    Fixed _ _ _ (Just (DecimalF d))
-                    -> decimalName d
-    Fixed _ _ _ (Just Duration)
-                    -> "duration"
-    _               -> renderFullname $ name bt
-  where
-    decimalName (Decimal prec sc) = "decimal(" <> T.pack (show prec) <> "," <> T.pack (show sc) <> ")"
+typeName = \case
+  -- primitive types
+  Null -> "null"
+  Boolean -> "boolean"
+  Int _logical -> "int"
+  Long _logical -> "long"
+  Float -> "float"
+  Double -> "double"
+  Bytes _logical -> "bytes"
+  String _logical -> "string"
+  -- named types
+  Record { name } -> renderFullname name
+  Enum { name } -> renderFullname name
+  Fixed { name } -> renderFullname name
+  -- other complex types
+  Map _ -> "map"
+  Array _ -> "array"
+  -- unions do not have a name, it's invalid to call this function
+  Union _ -> error "Invalid call to typeName: unions are not supported"
+  -- and name references
+  NamedType name  -> renderFullname name
 
 -- |Get the aliases of the type.
 typeAliases :: Schema -> [TypeName]
@@ -537,17 +525,6 @@ parseSchemaJSON context = \case
     "double"                 -> return Double
     "bytes"                  -> return $ Bytes Nothing
     "string"                 -> return $ String Nothing
-    -- Apparently we treat these logical types similarly as primitive types. I don't know why we do
-    -- this, since the spec doesn't seem to mention such a thing (could be in an older version?).
-    -- This does seem to be consistent with the 'typeName' function.
-    "uuid"                   -> return $ String (Just UUID)
-    "date"                   -> return $ Int (Just Date)
-    "time-millis"            -> return $ Int (Just TimeMillis)
-    "time-micros"            -> return $ Long (Just TimeMicros)
-    "timestamp-millis"       -> return $ Long (Just TimestampMillis)
-    "timestamp-micros"       -> return $ Long (Just TimestampMicros)
-    "local-timestamp-millis" -> return $ Long (Just LocalTimestampMillis)
-    "local-timestamp-micros" -> return $ Long (Just LocalTimestampMicros)
     somename                 -> return $ NamedType $ mkTypeName context somename Nothing
   A.Array arr
     | V.length arr > 0 ->
