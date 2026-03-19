@@ -170,28 +170,28 @@ instance FromAvro UUID.UUID where
   {-# INLINE fromAvro #-}
 
 instance FromAvro Time.Day where
-  fromAvro (Int (ReadSchema.Int (Just ReadSchema.Date)) n) = Right $ fromDaysSinceEpoch (toInteger n)
+  fromAvro (Int (ReadSchema.Int (Schema.KnownLogicalType ReadSchema.Date)) n) = Right $ fromDaysSinceEpoch (toInteger n)
   fromAvro x                                               = Left ("Unable to decode Day from: " <> show (describeValue x))
   {-# INLINE fromAvro #-}
 
 instance FromAvro Time.DiffTime where
-  fromAvro (Int (ReadSchema.Int (Just ReadSchema.TimeMillis)) n)          = Right $ millisToDiffTime (toInteger n)
-  fromAvro (Long (ReadSchema.Long _ (Just ReadSchema.TimestampMillis)) n) = Right $ millisToDiffTime (toInteger n)
-  fromAvro (Long (ReadSchema.Long _ (Just ReadSchema.TimeMicros)) n)      = Right $ microsToDiffTime (toInteger n)
-  fromAvro (Long (ReadSchema.Long _ (Just ReadSchema.TimestampMicros)) n) = Right $ microsToDiffTime (toInteger n)
+  fromAvro (Int (ReadSchema.Int (Schema.KnownLogicalType ReadSchema.TimeMillis)) n)          = Right $ millisToDiffTime (toInteger n)
+  fromAvro (Long (ReadSchema.Long _ (Schema.KnownLogicalType ReadSchema.TimestampMillis)) n) = Right $ millisToDiffTime (toInteger n)
+  fromAvro (Long (ReadSchema.Long _ (Schema.KnownLogicalType ReadSchema.TimeMicros)) n)      = Right $ microsToDiffTime (toInteger n)
+  fromAvro (Long (ReadSchema.Long _ (Schema.KnownLogicalType ReadSchema.TimestampMicros)) n) = Right $ microsToDiffTime (toInteger n)
   fromAvro x                                                              = Left ("Unable to decode TimeDiff from: " <> show (describeValue x))
   {-# INLINE fromAvro #-}
 
 instance FromAvro Time.UTCTime where
-  fromAvro (Long (ReadSchema.Long _ (Just ReadSchema.TimestampMicros)) n) = Right $ microsToUTCTime (toInteger n)
-  fromAvro (Long (ReadSchema.Long _ (Just ReadSchema.TimestampMillis)) n) = Right $ millisToUTCTime (toInteger n)
+  fromAvro (Long (ReadSchema.Long _ (Schema.KnownLogicalType ReadSchema.TimestampMicros)) n) = Right $ microsToUTCTime (toInteger n)
+  fromAvro (Long (ReadSchema.Long _ (Schema.KnownLogicalType ReadSchema.TimestampMillis)) n) = Right $ millisToUTCTime (toInteger n)
   fromAvro x                                                              = Left ("Unable to decode UTCTime from: " <> show (describeValue x))
   {-# INLINE fromAvro #-}
 
 instance FromAvro Time.LocalTime where
-  fromAvro (Long (ReadSchema.Long _ (Just ReadSchema.LocalTimestampMicros)) n) =
+  fromAvro (Long (ReadSchema.Long _ (Schema.KnownLogicalType ReadSchema.LocalTimestampMicros)) n) =
     Right $ microsToLocalTime (toInteger n)
-  fromAvro (Long (ReadSchema.Long _ (Just ReadSchema.LocalTimestampMillis)) n) =
+  fromAvro (Long (ReadSchema.Long _ (Schema.KnownLogicalType ReadSchema.LocalTimestampMillis)) n) =
     Right $ millisToLocalTime (toInteger n)
   fromAvro x = Left ("Unable to decode LocalTime from: " <> show (describeValue x))
   {-# INLINE fromAvro #-}

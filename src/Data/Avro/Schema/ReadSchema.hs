@@ -71,12 +71,12 @@ data ReadSchema
       -- Basic types
         Null
       | Boolean
-      | Int    { logicalTypeI :: Maybe LogicalTypeInt }
-      | Long   { longReadFrom :: ReadLong, logicalTypeL :: Maybe LogicalTypeLong }
+      | Int    { logicalTypeI :: S.LogicalType LogicalTypeInt }
+      | Long   { longReadFrom :: ReadLong, logicalTypeL :: S.LogicalType LogicalTypeLong }
       | Float  { floatReadFrom :: ReadFloat }
       | Double { doubleReadFrom :: ReadDouble }
-      | Bytes  { logicalTypeB :: Maybe LogicalTypeBytes }
-      | String { logicalTypeS :: Maybe LogicalTypeString }
+      | Bytes  { logicalTypeB :: S.LogicalType LogicalTypeBytes }
+      | String { logicalTypeS :: S.LogicalType LogicalTypeString }
       | Array  { item :: ReadSchema }
       | Map    { values :: ReadSchema }
       | NamedType TypeName
@@ -97,7 +97,7 @@ data ReadSchema
       | Fixed { name         :: TypeName
               , aliases      :: [TypeName]
               , size         :: Int
-              , logicalTypeF :: Maybe LogicalTypeFixed
+              , logicalTypeF :: S.LogicalType LogicalTypeFixed
               }
       | FreeUnion { pos :: Int, ty :: ReadSchema }
     deriving (Eq, Show, Generic, NFData)

@@ -28,6 +28,7 @@ import           Test.Hspec
 
 data Person = Person
   { fullName :: Text
+  , nickName :: Text
   , age      :: Int32
   , ssn      :: Maybe Text
   } deriving (Eq, Show)
@@ -35,9 +36,10 @@ data Person = Person
 schema'Person :: Schema
 schema'Person =
   Record "Person" []  Nothing
-    [ fld "fullName"  (String Nothing)                      Nothing
-    , fld "age"       (Int Nothing)                         Nothing
-    , fld "ssn"       (mkUnion $ Null :| [String Nothing])  Nothing
+    [ fld "fullName"  (String NoLogicalType)                      Nothing
+    , fld "nickName"  (String (UnknownLogicalType "nick"))                      Nothing
+    , fld "age"       (Int NoLogicalType)                         Nothing
+    , fld "ssn"       (mkUnion $ Null :| [String NoLogicalType])  Nothing
     ]
   where
      fld nm ty def = Field nm [] Nothing Nothing ty def
@@ -46,6 +48,7 @@ instance ToAvro Person where
   toAvro schema value =
     record schema
       [ "fullName"  .= fullName value
+      , "nickName"  .= nickName value
       , "age"       .= age value
       , "ssn"       .= ssn value
       ]
@@ -56,10 +59,12 @@ instance FromAvro Person where
     <$> fromAvro (vs Vector.! 0)
     <*> fromAvro (vs Vector.! 1)
     <*> fromAvro (vs Vector.! 2)
+    <*> fromAvro (vs Vector.! 3)
 
 personGen :: MonadGen m => m Person
 personGen = Person
   <$> Gen.text (Range.linear 0 64) Gen.alphaNum
+  <*> Gen.text (Range.linear 0 10) Gen.alphaNum
   <*> Gen.int32 Range.linearBounded
   <*> Gen.maybe (Gen.text (Range.singleton 16) Gen.alphaNum)
 

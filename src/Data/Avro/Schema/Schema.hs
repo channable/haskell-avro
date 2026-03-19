@@ -28,6 +28,7 @@ module Data.Avro.Schema.Schema
   , Field(..), Order(..)
   , TypeName(..)
   , Decimal(..)
+  , LogicalType(..)
   , LogicalTypeBytes(..), LogicalTypeFixed(..)
   , LogicalTypeInt(..), LogicalTypeLong(..)
   , LogicalTypeString(..)
@@ -116,11 +117,11 @@ data Schema
       -- Basic types
         Null
       | Boolean
-      | Int    { logicalTypeI :: Maybe LogicalTypeInt }
-      | Long   { logicalTypeL :: Maybe LogicalTypeLong }
+      | Int    { logicalTypeI :: LogicalType LogicalTypeInt }
+      | Long   { logicalTypeL :: LogicalType LogicalTypeLong }
       | Float | Double
-      | Bytes  { logicalTypeB :: Maybe LogicalTypeBytes }
-      | String { logicalTypeS :: Maybe LogicalTypeString }
+      | Bytes  { logicalTypeB :: LogicalType LogicalTypeBytes }
+      | String { logicalTypeS :: LogicalType LogicalTypeString }
       | Array  { item :: Schema }
       | Map    { values :: Schema }
       | NamedType TypeName
@@ -140,18 +141,18 @@ data Schema
       | Fixed { name         :: TypeName
               , aliases      :: [TypeName]
               , size         :: Int
-              , logicalTypeF :: Maybe LogicalTypeFixed
+              , logicalTypeF :: LogicalType LogicalTypeFixed
               }
     deriving (Ord, Show, Generic, NFData)
 
 pattern Int' :: Schema
-pattern Int'    = Int    Nothing
+pattern Int' = Int NoLogicalType
 pattern Long' :: Schema
-pattern Long'   = Long   Nothing
+pattern Long' = Long NoLogicalType
 pattern Bytes' :: Schema
-pattern Bytes'  = Bytes  Nothing
+pattern Bytes' = Bytes NoLogicalType
 pattern String' :: Schema
-pattern String' = String Nothing
+pattern String' = String NoLogicalType
 
 data Field = Field { fldName    :: Text
                    , fldAliases :: [Text]
@@ -187,6 +188,19 @@ data Order = Ascending | Descending | Ignore
 -- from the Unix epoch (1970-01-01). Avro implementations /may/ parse
 -- this type into a language-specific date type (eg 'Data.Time.Day' in
 -- Haskell), but could also treat it as a normal Avro @int@ instead.
+
+-- | All types that can potentially have logical types, will fall into one of these three cases:
+--
+--     1. No logical type
+--     2. A known logical type, internally represented using type @a@
+--     3. An unknown logical type. This could be any string. It's useful if we can put this in a
+--        schema, but it does not affect the serialization/deserialization as far as the library
+--        is concerned.
+data LogicalType a
+  = NoLogicalType
+  | KnownLogicalType a
+  | UnknownLogicalType Text
+  deriving (Eq, Show, Ord, Generic, NFData)
 
 newtype LogicalTypeBytes
   = DecimalB Decimal
@@ -519,12 +533,12 @@ parseSchemaJSON context = \case
     --     of JSON encoding, it is a best practice to use a namespace when using these names.
     "null"                   -> return Null
     "boolean"                -> return Boolean
-    "int"                    -> return $ Int Nothing
-    "long"                   -> return $ Long Nothing
+    "int"                    -> return $ Int NoLogicalType
+    "long"                   -> return $ Long NoLogicalType
     "float"                  -> return Float
     "double"                 -> return Double
-    "bytes"                  -> return $ Bytes Nothing
-    "string"                 -> return $ String Nothing
+    "bytes"                  -> return $ Bytes NoLogicalType
+    "string"                 -> return $ String NoLogicalType
     somename                 -> return $ NamedType $ mkTypeName context somename Nothing
   A.Array arr
     | V.length arr > 0 ->
@@ -558,55 +572,55 @@ parseSchemaJSON context = \case
           aliases      <- mkAliases fixedName <$> (o .:? "aliases" .!= [])
           size         <- o .: "size"
           logicalType <- withLogicalType o $ \case
-            "decimal" -> Just . DecimalF <$> parseDecimal o
+            "decimal" -> KnownLogicalType . DecimalF <$> parseDecimal o
             -- duration should only work with size 12, use a pattern guard here?
-            "duration" -> pure $ Just Duration
+            "duration" -> pure $ KnownLogicalType Duration
             -- spec also has 'uuid' here, but only when the fixed has size 16
-            _t -> pure Nothing
+            t -> pure $ UnknownLogicalType t
           pure $ Fixed fixedName aliases size logicalType
         "null"    -> pure Null
         "boolean" -> pure Boolean
         "int"     -> do
           logicalType <- withLogicalType o $ \case
-            "time-millis" -> pure $ Just TimeMillis
-            "date" -> pure $ Just Date
+            "time-millis" -> pure $ KnownLogicalType TimeMillis
+            "date" -> pure $ KnownLogicalType Date
             "decimal" ->
               -- Decimal logical type for int is actually not in spec..
-              Just . DecimalI <$> parseDecimal o
-            _t -> pure Nothing
+              KnownLogicalType . DecimalI <$> parseDecimal o
+            t -> pure $ UnknownLogicalType t
           pure $ Int logicalType
         "long"    -> do
           logicalType <- withLogicalType o $ \case
-            "time-micros" -> pure $ Just TimeMicros
-            "timestamp-millis" -> pure $ Just TimestampMillis
-            "timestamp-micros" -> pure $ Just TimestampMicros
+            "time-micros" -> pure $ KnownLogicalType TimeMicros
+            "timestamp-millis" -> pure $ KnownLogicalType TimestampMillis
+            "timestamp-micros" -> pure $ KnownLogicalType TimestampMicros
             -- Spec also has "timestamp-nanos"
-            "local-timestamp-millis" -> pure $ Just LocalTimestampMillis
-            "local-timestamp-micros" -> pure $ Just LocalTimestampMicros
+            "local-timestamp-millis" -> pure $ KnownLogicalType LocalTimestampMillis
+            "local-timestamp-micros" -> pure $ KnownLogicalType LocalTimestampMicros
             -- Spec also has "local-timestamp-nanos"
             "decimal" ->
               -- Decimal logical type for int is actually not in spec..
-              Just . DecimalL <$> parseDecimal o
-            _t -> pure Nothing
+              KnownLogicalType . DecimalL <$> parseDecimal o
+            t -> pure $ UnknownLogicalType t
           pure $ Long logicalType
         "float"   -> pure Float
         "double"  -> pure Double
         "bytes"   -> do
           logicalType <- withLogicalType o $ \case
-            "decimal" -> Just . DecimalB <$> parseDecimal o
-            _t -> pure Nothing
+            "decimal" -> KnownLogicalType . DecimalB <$> parseDecimal o
+            t -> pure $ UnknownLogicalType t
           pure $ Bytes logicalType
         "string"  -> do
           logicalType <- withLogicalType o $ \case
-            "uuid" -> pure $ Just UUID
-            _t -> pure Nothing
+            "uuid" -> pure $ KnownLogicalType UUID
+            t -> pure $ UnknownLogicalType t
           pure $ String logicalType
         s        -> fail $ "Unrecognized object type: " <> T.unpack s
 
   invalid    -> typeMismatch "Invalid JSON for Avro Schema" invalid
 
   where
-    withLogicalType :: A.Object -> (Text -> Parser (Maybe lt)) -> Parser (Maybe lt)
+    withLogicalType :: A.Object -> (Text -> Parser (LogicalType lt)) -> Parser (LogicalType lt)
     withLogicalType o f = do
       -- There's actually three cases:
       --   1. No logical type given
@@ -614,7 +628,7 @@ parseSchemaJSON context = \case
       --   3. Known logical type (one of the cases we define in this library)
       -- For the moment, the schema types do not distinguish between cases 1 and 2.
       o .:? "logicalType" >>= \case
-        Nothing -> pure Nothing -- case 1
+        Nothing -> pure NoLogicalType -- case 1
         Just lt -> f lt -- cases 2 and 3
 
     parseDecimal o =
@@ -670,39 +684,59 @@ schemaToJSON :: Maybe TypeName
                 -- ^ The schema to serialize to JSON.
              -> A.Value
 schemaToJSON context = \case
+  -- Primitives can be encoded as named type references e.g. "string", or fully as {"type":
+  -- "string"}. The first one is the 'Parsing Canonical Form', but the latter is necessary when we
+  -- add logical types.
   Null            -> A.String "null"
   Boolean         -> A.String "boolean"
-  Int Nothing     -> A.String "int"
-  Int (Just (DecimalI (Decimal prec sc))) ->
-    object [ "type" .= ("int" :: Text), "logicalType" .= ("decimal" :: Text)
-           , "precision" .= prec, "scale" .= sc ]
-  Int (Just Date) ->
-    object [ "type" .= ("int" :: Text), "logicalType" .= ("date" :: Text) ]
-  Int (Just TimeMillis) ->
-    object [ "type" .= ("int" :: Text), "logicalType" .= ("time-millis" :: Text) ]
-  Long Nothing    -> A.String "long"
-  Long (Just (DecimalL (Decimal prec sc))) ->
-    object [ "type" .= ("long" :: Text), "logicalType" .= ("decimal" :: Text)
-           , "precision" .= prec, "scale" .= sc ]
-  Long (Just TimeMicros) ->
-    object [ "type" .= ("long" :: Text), "logicalType" .= ("time-micros" :: Text) ]
-  Long (Just TimestampMillis) ->
-    object [ "type" .= ("long" :: Text), "logicalType" .= ("timestamp-millis" :: Text) ]
-  Long (Just TimestampMicros) ->
-    object [ "type" .= ("long" :: Text), "logicalType" .= ("timestamp-micros" :: Text) ]
-  Long (Just LocalTimestampMillis) ->
-    object [ "type" .= ("long" :: Text), "logicalType" .= ("local-timestamp-millis" :: Text) ]
-  Long (Just LocalTimestampMicros) ->
-    object [ "type" .= ("long" :: Text), "logicalType" .= ("local-timestamp-micros" :: Text) ]
+  Int lt ->
+    case lt of
+      NoLogicalType ->
+        A.String "int"
+      KnownLogicalType (DecimalI (Decimal prec sc)) ->
+        object [ typeIs "int", logicalTypeIs "decimal", "precision" .= prec, "scale" .= sc ]
+      KnownLogicalType Date ->
+        object [ typeIs "int", logicalTypeIs "date" ]
+      KnownLogicalType TimeMillis ->
+        object [ typeIs "int", logicalTypeIs "time-millis" ]
+      UnknownLogicalType t ->
+        object [ typeIs "int", logicalTypeIs t ]
+  Long lt ->
+    case lt of
+      NoLogicalType ->
+        A.String "long"
+      KnownLogicalType (DecimalL (Decimal prec sc)) ->
+        object [ typeIs "long", logicalTypeIs "decimal", "precision" .= prec, "scale" .= sc ]
+      KnownLogicalType TimeMicros ->
+        object [ typeIs "long", logicalTypeIs "time-micros" ]
+      KnownLogicalType TimestampMillis ->
+        object [ typeIs "long", logicalTypeIs "timestamp-millis" ]
+      KnownLogicalType TimestampMicros ->
+        object [ typeIs "long", logicalTypeIs "timestamp-micros" ]
+      KnownLogicalType LocalTimestampMillis ->
+        object [ typeIs "long", logicalTypeIs "local-timestamp-millis" ]
+      KnownLogicalType LocalTimestampMicros ->
+        object [ typeIs "long", logicalTypeIs "local-timestamp-micros" ]
+      UnknownLogicalType t ->
+        object [ typeIs "long", logicalTypeIs t ]
   Float           -> A.String "float"
   Double          -> A.String "double"
-  Bytes Nothing   -> A.String "bytes"
-  Bytes (Just (DecimalB (Decimal prec sc))) ->
-    object [ "type" .= ("bytes" :: Text), "logicalType" .= ("decimal" :: Text)
-           , "precision" .= prec, "scale" .= sc ]
-  String Nothing  -> A.String "string"
-  String (Just UUID) ->
-    object [ "type" .= ("string" :: Text), "logicalType" .= ("uuid" :: Text) ]
+  Bytes lt ->
+    case lt of
+      NoLogicalType ->
+        A.String "bytes"
+      KnownLogicalType (DecimalB (Decimal prec sc)) ->
+        object [ typeIs "bytes", logicalTypeIs "decimal", "precision" .= prec, "scale" .= sc ]
+      UnknownLogicalType t ->
+        object [ typeIs "bytes", logicalTypeIs t ]
+  String lt ->
+    case lt of
+      NoLogicalType ->
+        A.String "string"
+      KnownLogicalType UUID ->
+        object [ typeIs "string", logicalTypeIs "uuid" ]
+      UnknownLogicalType t ->
+        object [ typeIs "string", logicalTypeIs t ]
   Array tn        ->
     object [ "type" .= ("array" :: Text), "items" .= schemaToJSON context tn ]
   Map tn          ->
@@ -735,11 +769,11 @@ schemaToJSON context = \case
            , "size"    .= size
            ]
         extended = case logicalTypeF of
-          Nothing       -> []
-          Just Duration -> [ "logicalType" .= ("duration" :: Text) ]
-          Just (DecimalF (Decimal prec sc))
-                   -> [ "logicalType" .= ("decimal" :: Text)
-                      , "precision" .= prec, "scale" .= sc ]
+          NoLogicalType       -> []
+          UnknownLogicalType t -> [ logicalTypeIs t ]
+          KnownLogicalType Duration -> [ logicalTypeIs "duration" ]
+          KnownLogicalType (DecimalF (Decimal prec sc)) ->
+            [ logicalTypeIs "decimal", "precision" .= prec, "scale" .= sc ]
     in object (basic ++ extended)
   where render context1 typeName1
           | Just ctx <- context1
@@ -762,6 +796,10 @@ schemaToJSON context = \case
         -- the default value always represents the first element of a union
         adjustDefaultValue (DUnion _ _ val) = val
         adjustDefaultValue ty               = ty
+
+        typeIs ty = "type" .= (ty :: Text)
+        logicalTypeIs lty = "logicalType" .= (lty :: Text)
+
 
 instance ToJSON DefaultValue where
   toJSON av =

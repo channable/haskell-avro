@@ -51,7 +51,7 @@ bitStringToWord8s = reverse . map (toWord . reverse) . chunksOf 8 . reverse . to
 
 spec :: Spec
 spec = describe "Avro.Codec.Int64Spec" $ do
-  let schema = Schema.Long Nothing
+  let schema = Schema.Long Schema.NoLogicalType
   it "Can encode 90071992547409917L correctly" $ require $ withTests 1 $ property $ do
     let expectedBuffer = BL.pack [0xfa, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xbf, 0x02]
     let value = OnlyInt64 90071992547409917
@@ -64,6 +64,9 @@ spec = describe "Avro.Codec.Int64Spec" $ do
 
   it "Can decode encoded Int64 values" $ require $ property $ do
     roundtripGen schema (Gen.int64 Range.linearBounded)
+
+  it "Ignores unknown logical types" $ require $ withTests 10 $ property $ do
+    roundtripGen (Schema.Long $ Schema.UnknownLogicalType "someunknowntype") (Gen.int64 Range.linearBounded)
 
   it "Can decode 129L" $ require $ withTests 1 $ property $ do
     let w = 129 :: Int64

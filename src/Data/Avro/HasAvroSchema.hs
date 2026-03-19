@@ -86,24 +86,24 @@ instance HasAvroSchema Lazy.ByteString where
   schema = Tagged S.Bytes'
 
 instance (KnownNat p, KnownNat s) => HasAvroSchema (D.Decimal p s) where
-  schema = Tagged $ S.Long (Just (DecimalL (S.Decimal pp ss)))
+  schema = Tagged $ S.Long (KnownLogicalType (DecimalL (S.Decimal pp ss)))
     where ss = natVal (Proxy :: Proxy s)
           pp = natVal (Proxy :: Proxy p)
 
 instance HasAvroSchema UUID.UUID where
-  schema = Tagged $ S.String (Just UUID)
+  schema = Tagged $ S.String (KnownLogicalType UUID)
 
 instance HasAvroSchema Time.Day where
-  schema = Tagged $ S.Int (Just Date)
+  schema = Tagged $ S.Int (KnownLogicalType Date)
 
 instance HasAvroSchema Time.DiffTime where
-  schema = Tagged $ S.Long (Just TimeMicros)
+  schema = Tagged $ S.Long (KnownLogicalType TimeMicros)
 
 instance HasAvroSchema Time.UTCTime where
-  schema = Tagged $ S.Long (Just TimestampMicros)
+  schema = Tagged $ S.Long (KnownLogicalType TimestampMicros)
 
 instance HasAvroSchema Time.LocalTime where
-  schema = Tagged $ S.Long (Just LocalTimestampMicros)
+  schema = Tagged $ S.Long (KnownLogicalType LocalTimestampMicros)
 
 instance (HasAvroSchema a) => HasAvroSchema (Identity a) where
   schema = Tagged $ S.Union $ V.fromListN 1 [untag @a schema]

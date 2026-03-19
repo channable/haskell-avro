@@ -35,6 +35,24 @@ spec :: Spec
 spec = describe "Avro.Codec.TextSpec" $ do
   let schema = schema'OnlyText
   let readSchema = fromSchema schema
+
+  it "Derived the expected schema" $ require $ withTests 1 $ property $ do
+    schema === Schema.Record
+         { Schema.name = "test.contract.OnlyText"
+         , Schema.aliases = []
+         , Schema.doc = Nothing
+         , Schema.fields =
+             [ Schema.Field
+                 { Schema.fldName = "onlyTextValue"
+                 , Schema.fldAliases = []
+                 , Schema.fldDoc = Nothing
+                 , Schema.fldOrder = Just Schema.Ascending
+                 , Schema.fldType = Schema.String Schema.NoLogicalType
+                 , Schema.fldDefault = Nothing
+                 }
+             ]
+         }
+
   it "Can decode \"This is an unit test\"" $ require $ withTests 1 $ property $ do
     -- The '(' here is the length (ASCII value) of the string
     let expectedBuffer = "(This is an unit test"
@@ -48,3 +66,8 @@ spec = describe "Avro.Codec.TextSpec" $ do
     bytes <- forAll $ Gen.bytes (Range.linear 0 511)
     eval $ decodeValueWithSchema @OnlyText readSchema (fromStrict bytes)
     success
+
+  it "Ignores unknown logical types" $ require $ withTests 10 $ property $ do
+    roundtripGen
+      (Schema.String $ Schema.UnknownLogicalType "someunknowntype")
+      (Gen.text (Range.linear 0 128) Gen.alphaNum)
