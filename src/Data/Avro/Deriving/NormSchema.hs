@@ -23,9 +23,9 @@ extractDerivables s = flip evalState initial . normSchema . snd <$> rawRecs
 getTypes :: Schema -> [(TypeName, Schema)]
 getTypes rec = case rec of
   r@Record{name, fields} -> (name,r) : (fields >>= (getTypes . fldType))
-  Array t                -> getTypes t
+  Array t _l             -> getTypes t
   Union ts               -> concatMap getTypes (Foldable.toList ts)
-  Map t                  -> getTypes t
+  Map t _l               -> getTypes t
   e@Enum{name}           -> [(name, e)]
   f@Fixed{name}          -> [(name, f)]
   _                      -> []
@@ -49,8 +49,8 @@ normSchema r = case r of
       Nothing ->
         error $ "Unable to resolve schema: " <> show (typeName t)
 
-  Array s -> Array <$> normSchema s
-  Map s   -> Map <$> normSchema s
+  Array s l -> Array <$> normSchema s <*> pure l
+  Map s l  -> Map <$> normSchema s <*> pure l
   Union l -> Union <$> traverse normSchema l
   Record { name }  -> do
     modify' (M.insert name (NamedType name))

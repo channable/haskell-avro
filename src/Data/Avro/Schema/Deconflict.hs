@@ -23,22 +23,22 @@ import qualified Data.Avro.Schema.ReadSchema as Read
 -- Schema resolution rules are described by the specification: <https://avro.apache.org/docs/current/spec.html#Schema+Resolution>
 deconflict :: Schema -> Schema -> Either String ReadSchema
 deconflict writerSchema readerSchema | writerSchema == readerSchema = pure (Read.fromSchema readerSchema)
-deconflict S.Null S.Null             = pure Read.Null
-deconflict S.Boolean S.Boolean       = pure Read.Boolean
+deconflict (S.Null _) (S.Null _)        = pure Read.Null
+deconflict (S.Boolean _) (S.Boolean _)  = pure Read.Boolean
 
 deconflict (S.Int _) (S.Int r)       = pure (Read.Int r)
 deconflict (S.Int _) (S.Long r)      = pure (Read.Long Read.LongFromInt r)
-deconflict (S.Int _) S.Float         = pure (Read.Float Read.FloatFromInt)
-deconflict (S.Int _) S.Double        = pure (Read.Double Read.DoubleFromInt)
+deconflict (S.Int _) (S.Float _)     = pure (Read.Float Read.FloatFromInt)
+deconflict (S.Int _) (S.Double _)    = pure (Read.Double Read.DoubleFromInt)
 
 deconflict (S.Long _) (S.Long r)     = pure (Read.Long Read.ReadLong r)
-deconflict (S.Long _) S.Float        = pure (Read.Float Read.FloatFromLong)
-deconflict (S.Long _) S.Double       = pure (Read.Double Read.DoubleFromLong)
+deconflict (S.Long _) (S.Float _)    = pure (Read.Float Read.FloatFromLong)
+deconflict (S.Long _) (S.Double _)   = pure (Read.Double Read.DoubleFromLong)
 
-deconflict S.Float S.Float           = pure (Read.Float Read.ReadFloat)
-deconflict S.Float S.Double          = pure (Read.Double Read.DoubleFromFloat)
+deconflict (S.Float _) (S.Float _)   = pure (Read.Float Read.ReadFloat)
+deconflict (S.Float _) (S.Double _)  = pure (Read.Double Read.DoubleFromFloat)
 
-deconflict S.Double S.Double         = pure (Read.Double Read.ReadDouble)
+deconflict (S.Double _) (S.Double _) = pure (Read.Double Read.ReadDouble)
 
 deconflict (S.Bytes _) (S.Bytes r)   = pure (Read.Bytes r)
 deconflict (S.Bytes _) (S.String r)  = pure (Read.String r)
@@ -46,9 +46,9 @@ deconflict (S.Bytes _) (S.String r)  = pure (Read.String r)
 deconflict (S.String _) (S.String r) = pure (Read.String r)
 deconflict (S.String _) (S.Bytes r)  = pure (Read.Bytes r)
 
-deconflict (S.Array w) (S.Array r)   = Read.Array <$> deconflict w r
+deconflict (S.Array w _) (S.Array r _) = Read.Array <$> deconflict w r
 
-deconflict (S.Map w) (S.Map r)       = Read.Map <$> deconflict w r
+deconflict (S.Map w _) (S.Map r _)   = Read.Map <$> deconflict w r
 
 deconflict w@S.Enum{} r@S.Enum{}
   | name w == name r && symbols r `contains` symbols w = pure Read.Enum

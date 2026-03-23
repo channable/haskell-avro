@@ -36,11 +36,11 @@ data Person = Person
 schema'Person :: Schema
 schema'Person =
   Record "Person" []  Nothing
-    [ fld "fullName"  (String NoLogicalType)                      Nothing
-    , fld "nickName"  (String (UnknownLogicalType "nick"))                      Nothing
-    , fld "age"       (Int NoLogicalType)                         Nothing
-    , fld "ssn"       (mkUnion $ Null :| [String NoLogicalType])  Nothing
-    ]
+    [ fld "fullName"  String' Nothing
+    , fld "nickName"  (String (UnknownLogicalType "nick")) Nothing
+    , fld "age"       Int' Nothing
+    , fld "ssn"       (mkUnion $ Null' :| [String']) Nothing
+    ] NoLogicalType
   where
      fld nm ty def = Field nm [] Nothing Nothing ty def
 

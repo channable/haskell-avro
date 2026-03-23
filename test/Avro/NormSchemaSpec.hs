@@ -22,7 +22,7 @@ spec = describe "Avro.NormSchemaSpec" $ do
     (fldType <$> fields schema'ContainerChild) `shouldBe` [schema'ReusedChild, NamedType "Boo.ReusedChild"]
 
   it "should normalise schemas from unions" $
-     fldType <$> fields schema'Curse `shouldBe` [mkUnion (Null :| [schema'Geo])]
+     fldType <$> fields schema'Curse `shouldBe` [mkUnion (Null' :| [schema'Geo])]
 
   it "should serialise reused schema correctly" $
     let Just expected = Aeson.encode <$> Aeson.decode @Schema twoBits'rawSchema

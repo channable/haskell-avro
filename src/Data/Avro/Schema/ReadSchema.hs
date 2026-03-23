@@ -140,28 +140,30 @@ data ReadField = ReadField
 -- This function is useful when no deconflicting is required.
 fromSchema :: S.Schema -> ReadSchema
 fromSchema = \case
-  S.Null        -> Null
-  S.Boolean     -> Boolean
+  S.Null _l     -> Null
+  S.Boolean _l  -> Boolean
   S.Int l       -> Int l
   S.Long l      -> Long ReadLong l
-  S.Float       -> Float ReadFloat
-  S.Double      -> Double ReadDouble
+  S.Float _l    -> Float ReadFloat
+  S.Double _l   -> Double ReadDouble
   S.Bytes l     -> Bytes l
   S.String l    -> String l
-  S.Array vs    -> Array $ fromSchema vs
-  S.Map vs      -> Map $ fromSchema vs
+  S.Array vs _l -> Array $ fromSchema vs
+  S.Map vs _l   -> Map $ fromSchema vs
   S.NamedType v -> NamedType v
   v@S.Record{}  -> Record
     { name    = S.name v
     , aliases = S.aliases v
     , doc     = S.doc v
     , fields  = (\(i, x) -> fromField (AsIs i) x) <$> zip [0..] (S.fields v)
+    -- forget logical type
     }
   v@S.Enum{} -> Enum
     { name    = S.name v
     , aliases = S.aliases v
     , doc     = S.doc v
     , symbols = S.symbols v
+    -- forget logical type
     }
   S.Union vs  -> Union . V.indexed $ fromSchema <$> vs
   v@S.Fixed{} -> Fixed

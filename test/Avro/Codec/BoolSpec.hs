@@ -32,11 +32,11 @@ spec :: Spec
 spec = describe "Avro.Codec.BoolSpec" $ do
   it "should encode True correctly" $ require $ withTests 1 $ property $ do
     let trueEncoding = BL.singleton 0x01
-    encodeValueWithSchema Schema.Boolean (OnlyBool True) === trueEncoding
+    encodeValueWithSchema Schema.Boolean' (OnlyBool True) === trueEncoding
 
   it "should encode False correctly" $ require $ withTests 1 $ property $ do
     let falseEncoding = BL.singleton 0x00
-    encodeValueWithSchema Schema.Boolean (OnlyBool False) === falseEncoding
+    encodeValueWithSchema Schema.Boolean' (OnlyBool False) === falseEncoding
 
   it "should encode then decode True correctly" $ require $ withTests 10 $ property $ do
-    roundtripGen Schema.Boolean Gen.bool
+    roundtripGen Schema.Boolean' Gen.bool

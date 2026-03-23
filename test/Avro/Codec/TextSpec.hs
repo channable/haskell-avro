@@ -51,6 +51,7 @@ spec = describe "Avro.Codec.TextSpec" $ do
                  , Schema.fldDefault = Nothing
                  }
              ]
+         , Schema.logicalType = Schema.NoLogicalType
          }
 
   it "Can decode \"This is an unit test\"" $ require $ withTests 1 $ property $ do

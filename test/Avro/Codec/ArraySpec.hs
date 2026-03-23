@@ -23,12 +23,12 @@ import           Test.Hspec
 spec :: Spec
 spec = describe "Avro.Codec.ArraySpec" $ do
   it "list roundtip" $ require $ property $ do
-    let schema   = Schema.Array (Schema.Int Schema.NoLogicalType)
+    let schema   = Schema.Array' Schema.Int'
     let arrayGen = Gen.list (Range.linear 0 255) (Gen.int32 Range.linearBounded)
     roundtripGen schema arrayGen
 
   it "map roundtrip" $ require $ property $ do
-    let schema = Schema.Map (Schema.Long Schema.NoLogicalType)
+    let schema = Schema.Map' Schema.Long'
     let keyGen = Gen.text (Range.linear 0 64) Gen.alphaNum
     let valueGen = Gen.int64 Range.linearBounded
     let kvGen = (,) <$> keyGen <*> valueGen
@@ -36,11 +36,11 @@ spec = describe "Avro.Codec.ArraySpec" $ do
 
 
   it "vector roundtrip" $ require $ property $ do
-    let schema   = Schema.Array (Schema.Int Schema.NoLogicalType)
+    let schema   = Schema.Array' Schema.Int'
     let arrayGen = Gen.list (Range.linear 0 255) (Gen.int32 Range.linearBounded)
     roundtripGen schema (V.fromList <$> arrayGen)
 
   it "unboxed vector roundtrip" $ require $ property $ do
-    let schema   = Schema.Array (Schema.Int Schema.NoLogicalType)
+    let schema   = Schema.Array' Schema.Int'
     let arrayGen = Gen.list (Range.linear 0 255) (Gen.int32 Range.linearBounded)
     roundtripGen schema (U.fromList <$> arrayGen)

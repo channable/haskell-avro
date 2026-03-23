@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# OPTIONS_GHC -Wno-x-partial #-}
+{-# LANGUAGE LambdaCase #-}
 -- | Avro supports a JSON representation of Avro objects alongside the
 -- Avro binary format. An Avro schema can be used to generate and
 -- validate JSON representations of Avro objects.
@@ -60,6 +61,7 @@
 -- @
 module Data.Avro.JSON where
 
+import Data.Monoid (First (..))
 import qualified Data.Aeson           as Aeson
 import qualified Data.Aeson.Key       as K
 import qualified Data.Aeson.KeyMap    as KM
@@ -79,11 +81,14 @@ decodeAvroJSON schema json =
     missing name =
       fail ("Type " <> show name <> " not in schema")
 
-    union (Schema.Union schemas) Aeson.Null
-      | Schema.Null `elem` schemas =
-          pure $ Schema.DUnion schemas Schema.Null Schema.DNull
-      | otherwise                  =
-          fail "Null not in union."
+    union (Schema.Union schemas) Aeson.Null =
+      let getNull = \case
+            t@Schema.Null{} -> Just t
+            _ -> Nothing
+      in case Foldable.foldMap (First . getNull) schemas of
+        First (Just nulty) ->
+          pure $ Schema.DUnion schemas nulty Schema.DNull
+        First Nothing -> fail "Null not in union."
     union (Schema.Union schemas) (Aeson.Object obj)
       | null obj =
           fail "Invalid encoding of union: empty object ({})."

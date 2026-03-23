@@ -170,18 +170,18 @@ mkStrictPrimitiveField _ field =
   where
     unpackedness =
       case Schema.fldType field of
-        Schema.Null    -> NonUnpackedField
-        Schema.Boolean -> NonUnpackedField
+        Schema.Null _    -> NonUnpackedField
+        Schema.Boolean _ -> NonUnpackedField
         _         -> UnpackedField
 
     shouldStricten =
       case Schema.fldType field of
-        Schema.Null    -> True
-        Schema.Boolean -> True
-        Schema.Int _   -> True
-        Schema.Long _  -> True
-        Schema.Float   -> True
-        Schema.Double  -> True
+        Schema.Null _    -> True
+        Schema.Boolean _ -> True
+        Schema.Int _     -> True
+        Schema.Long _    -> True
+        Schema.Float _   -> True
+        Schema.Double _  -> True
         _         -> False
 
 -- | Generates a field name that matches the field name in schema
@@ -303,12 +303,12 @@ badValueNew :: Show v => v -> String -> Either String a
 badValueNew v t = Left $ "Unexpected value for '" <> t <> "': " <> show v
 
 genFromValue :: NamespaceBehavior -> Schema -> Q [Dec]
-genFromValue namespaceBehavior (Schema.Enum n _ _ _ ) =
+genFromValue namespaceBehavior (Schema.Enum n _ _ _ _ ) =
   [d| instance AV.FromAvro $(TH.conT $ mkDataTypeName namespaceBehavior n) where
         fromAvro (AV.Enum _ i _) = $([| pure . toEnum|]) i
         fromAvro value           = $( [|\v -> badValueNew v $(mkTextLit $ Schema.renderFullname n)|] ) value
   |]
-genFromValue namespaceBehavior (Schema.Record n _ _ fs) =
+genFromValue namespaceBehavior (Schema.Record n _ _ fs _) =
   [d| instance AV.FromAvro $(TH.conT $ mkDataTypeName namespaceBehavior n) where
         fromAvro (AV.Record _ r) =
            $(genFromAvroNewFieldsExp (mkDataTypeName namespaceBehavior n) fs) r
@@ -354,7 +354,7 @@ newNames base n = sequence [newName (base ++ show i) | i <- [1..n]]
 ------------------------- ToAvro ------------------------------------------------
 
 genToAvro :: DeriveOptions -> Schema -> Q [Dec]
-genToAvro opts (Schema.Enum n _ _ _) =
+genToAvro opts (Schema.Enum n _ _ _ _) =
   encodeAvroInstance (mkSchemaValueName (namespaceBehavior opts) n)
   where
     encodeAvroInstance _ =
@@ -362,7 +362,7 @@ genToAvro opts (Schema.Enum n _ _ _) =
             toAvro = $([| \_ x -> putI (fromEnum x) |])
       |]
 
-genToAvro opts (Schema.Record n _ _ fs) =
+genToAvro opts (Schema.Record n _ _ fs _) =
   encodeAvroInstance (mkSchemaValueName (namespaceBehavior opts) n)
   where
     encodeAvroInstance sname =
@@ -409,11 +409,11 @@ setName = fmap . map . sn
     sn _ d                   = d
 
 genType :: DeriveOptions -> Schema -> Q [Dec]
-genType opts (Schema.Record n _ _ fs) = do
+genType opts (Schema.Record n _ _ fs _) = do
   flds <- traverse (mkField opts n) fs
   let dname = mkDataTypeName (namespaceBehavior opts) n
   sequenceA [genDataType dname flds]
-genType opts (Schema.Enum n _ _ vs) = do
+genType opts (Schema.Enum n _ _ vs _) = do
   let dname = mkDataTypeName (namespaceBehavior opts) n
   sequenceA [genEnum dname (mkAdtCtorName (namespaceBehavior opts) n <$> V.toList vs)]
 genType opts (Schema.Fixed n _ _ _) = do
@@ -423,8 +423,8 @@ genType _ _ = pure []
 
 mkFieldTypeName :: NamespaceBehavior -> Schema -> Q TH.Type
 mkFieldTypeName namespaceBehavior = \case
-  Schema.Null             -> [t| () |]
-  Schema.Boolean          -> [t| Bool |]
+  Schema.Null _           -> [t| () |]
+  Schema.Boolean _        -> [t| Bool |]
 
   Schema.Long Schema.NoLogicalType
     -> [t| Int64 |]
@@ -453,9 +453,9 @@ mkFieldTypeName namespaceBehavior = \case
     -> [t| DiffTime |]
   Schema.Int (Schema.KnownLogicalType (Schema.DecimalI _))
     -> [t| Int32 |]   -- This is probably wrong, but it's what the old code did..
-  Schema.Float
+  Schema.Float _
     -> [t| Float |]
-  Schema.Double
+  Schema.Double _
     -> [t| Double |]
   Schema.Bytes _
     -> [t| ByteString |]
@@ -467,17 +467,17 @@ mkFieldTypeName namespaceBehavior = \case
     -> [t| UUID |]
   Schema.Union branches
     -> union (Foldable.toList branches)
-  Schema.Record n _ _ _
+  Schema.Record n _ _ _ _
     -> [t| $(TH.conT $ mkDataTypeName namespaceBehavior n) |]
-  Schema.Map x
+  Schema.Map x _
     -> [t| Map Text $(go x) |]
-  Schema.Array x
+  Schema.Array x _
     -> [t| [$(go x)] |]
   Schema.NamedType n
     -> [t| $(TH.conT $ mkDataTypeName namespaceBehavior n)|]
   Schema.Fixed n _ _ _
     -> [t| $(TH.conT $ mkDataTypeName namespaceBehavior n)|]
-  Schema.Enum n _ _ _
+  Schema.Enum n _ _ _ _
     -> [t| $(TH.conT $ mkDataTypeName namespaceBehavior n)|]
   where
     go = mkFieldTypeName namespaceBehavior
@@ -486,9 +486,9 @@ mkFieldTypeName namespaceBehavior = \case
         -> error "Empty union types are not supported"
       [x]
         -> [t| Identity $(go x) |]
-      [Schema.Null, x]
+      [Schema.Null _, x]
         -> [t| Maybe $(go x) |]
-      [x, Schema.Null]
+      [x, Schema.Null _]
         -> [t| Maybe $(go x) |]
       [x, y] -> [t| Either $(go x) $(go y) |]
       [a, b, c] -> [t| Either3 $(go a) $(go b) $(go c) |]

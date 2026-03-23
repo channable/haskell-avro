@@ -48,7 +48,7 @@ newtype Encoder = Encoder { runEncoder :: Schema -> Builder }
 (.=) fieldName fieldValue = (fieldName, Encoder (flip toAvro fieldValue))
 
 record :: Schema -> [(Text, Encoder)] -> Builder
-record (S.Record _ _ _ fs) vs =
+record (S.Record _ _ _ fs _) vs =
     foldMap (mapField provided) fs
   where
     provided :: HashMap Text Encoder
@@ -78,65 +78,65 @@ instance ToAvro Int where
 instance ToAvro Int32 where
   toAvro (S.Long _) i = encodeRaw @Int64 (fromIntegral i)
   toAvro (S.Int _) i  = encodeRaw @Int32 i
-  toAvro S.Double i   = toAvro @Double S.Double (fromIntegral i)
-  toAvro S.Float i    = toAvro @Float S.Float (fromIntegral i)
+  toAvro (S.Double l) i   = toAvro @Double (S.Double l) (fromIntegral i)
+  toAvro (S.Float l) i    = toAvro @Float (S.Float l) (fromIntegral i)
   toAvro s _          = error ("Unable to encode Int32 as: " <> show s)
   {-# INLINE toAvro #-}
 
 instance ToAvro Int64 where
   toAvro (S.Long _) i = encodeRaw @Int64 i
-  toAvro S.Double i   = toAvro @Double S.Double (fromIntegral i)
-  toAvro S.Float i    = toAvro @Float S.Float (fromIntegral i)
+  toAvro (S.Double l) i   = toAvro @Double (S.Double l) (fromIntegral i)
+  toAvro (S.Float l) i    = toAvro @Float (S.Float l) (fromIntegral i)
   toAvro s _          = error ("Unable to encode Int64 as: " <> show s)
   {-# INLINE toAvro #-}
 
 instance ToAvro Word8 where
   toAvro (S.Int _) i  = encodeRaw @Word8 i
   toAvro (S.Long _) i = encodeRaw @Word64 (fromIntegral i)
-  toAvro S.Double i   = toAvro @Double S.Double (fromIntegral i)
-  toAvro S.Float i    = toAvro @Float S.Float (fromIntegral i)
+  toAvro (S.Double l) i   = toAvro @Double (S.Double l) (fromIntegral i)
+  toAvro (S.Float l) i    = toAvro @Float (S.Float l) (fromIntegral i)
   toAvro s _          = error ("Unable to encode Word8 as: " <> show s)
   {-# INLINE toAvro #-}
 
 instance ToAvro Word16 where
   toAvro (S.Int _) i  = encodeRaw @Word16 i
   toAvro (S.Long _) i = encodeRaw @Word64 (fromIntegral i)
-  toAvro S.Double i   = toAvro @Double S.Double (fromIntegral i)
-  toAvro S.Float i    = toAvro @Float S.Float (fromIntegral i)
+  toAvro (S.Double l) i   = toAvro @Double (S.Double l) (fromIntegral i)
+  toAvro (S.Float l) i    = toAvro @Float (S.Float l) (fromIntegral i)
   toAvro s _          = error ("Unable to encode Word16 as: " <> show s)
   {-# INLINE toAvro #-}
 
 instance ToAvro Word32 where
   toAvro (S.Int _) i  = encodeRaw @Word32 i
   toAvro (S.Long _) i = encodeRaw @Word64 (fromIntegral i)
-  toAvro S.Double i   = toAvro @Double S.Double (fromIntegral i)
-  toAvro S.Float i    = toAvro @Float S.Float (fromIntegral i)
+  toAvro (S.Double l) i   = toAvro @Double (S.Double l) (fromIntegral i)
+  toAvro (S.Float l) i    = toAvro @Float (S.Float l) (fromIntegral i)
   toAvro s _          = error ("Unable to encode Word32 as: " <> show s)
   {-# INLINE toAvro #-}
 
 instance ToAvro Word64 where
   toAvro (S.Long _) i = encodeRaw @Word64 i
-  toAvro S.Double i   = toAvro @Double S.Double (fromIntegral i)
+  toAvro (S.Double l) i   = toAvro @Double (S.Double l) (fromIntegral i)
   toAvro s _          = error ("Unable to encode Word64 as: " <> show s)
   {-# INLINE toAvro #-}
 
 instance ToAvro Double where
-  toAvro S.Double i = word64LE (IEEE.doubleToWord i)
+  toAvro (S.Double _) i = word64LE (IEEE.doubleToWord i)
   toAvro s _        = error ("Unable to encode Double as: " <> show s)
   {-# INLINE toAvro #-}
 
 instance ToAvro Float where
-  toAvro S.Float i  = word32LE (IEEE.floatToWord i)
-  toAvro S.Double i = word64LE (IEEE.doubleToWord $ realToFrac i)
+  toAvro (S.Float _) i  = word32LE (IEEE.floatToWord i)
+  toAvro (S.Double _) i = word64LE (IEEE.doubleToWord $ realToFrac i)
   toAvro s _        = error ("Unable to encode Float as: " <> show s)
   {-# INLINE toAvro #-}
 
 instance ToAvro () where
-  toAvro S.Null () = mempty
+  toAvro (S.Null _) () = mempty
   toAvro s ()      = error ("Unable to encode () as: " <> show s)
 
 instance ToAvro Bool where
-  toAvro S.Boolean v = word8 $ fromIntegral (fromEnum v)
+  toAvro (S.Boolean _) v = word8 $ fromIntegral (fromEnum v)
   toAvro s _         = error ("Unable to encode Bool as: " <> show s)
   {-# INLINE toAvro #-}
 
@@ -210,33 +210,33 @@ instance ToAvro TL.Text where
   {-# INLINE toAvro #-}
 
 instance ToAvro a => ToAvro [a] where
-  toAvro (S.Array s) as =
+  toAvro (S.Array s _) as =
     if DL.null as then long0 else encodeRaw (F.length as) <> foldMap (toAvro s) as <> long0
   toAvro s _         = error ("Unable to encode Haskell list as: " <> show s)
 
 instance ToAvro a => ToAvro (V.Vector a) where
-  toAvro (S.Array s) as =
+  toAvro (S.Array s _) as =
     if V.null as then long0 else encodeRaw (V.length as) <> foldMap (toAvro s) as <> long0
   toAvro s _         = error ("Unable to encode Vector list as: " <> show s)
 
 instance (Ix i, ToAvro a) => ToAvro (Ar.Array i a) where
-  toAvro (S.Array s) as =
+  toAvro (S.Array s _) as =
     if F.length as == 0 then long0 else encodeRaw (F.length as) <> foldMap (toAvro s) as <> long0
   toAvro s _         = error ("Unable to encode indexed Array list as: " <> show s)
 
 instance (U.Unbox a, ToAvro a) => ToAvro (U.Vector a) where
-  toAvro (S.Array s) as =
+  toAvro (S.Array s _) as =
     if U.null as then long0 else encodeRaw (U.length as) <> foldMap (toAvro s) (U.toList as) <> long0
   toAvro s _         = error ("Unable to encode Vector list as: " <> show s)
 
 instance ToAvro a => ToAvro (Map.Map Text a) where
-  toAvro (S.Map s) hm =
+  toAvro (S.Map s _) hm =
     if Map.null hm then long0 else putI (F.length hm) <> foldMap putKV (Map.toList hm) <> long0
     where putKV (k,v) = toAvro S.String' k <> toAvro s v
   toAvro s _         = error ("Unable to encode HashMap as: " <> show s)
 
 instance ToAvro a => ToAvro (HashMap Text a) where
-  toAvro (S.Map s) hm =
+  toAvro (S.Map s _) hm =
     if HashMap.null hm then long0 else putI (F.length hm) <> foldMap putKV (HashMap.toList hm) <> long0
     where putKV (k,v) = toAvro S.String' k <> toAvro s v
   toAvro s _         = error ("Unable to encode HashMap as: " <> show s)
@@ -244,8 +244,8 @@ instance ToAvro a => ToAvro (HashMap Text a) where
 instance ToAvro a => ToAvro (Maybe a) where
   toAvro (S.Union opts) v =
     case F.toList opts of
-      [S.Null, s] -> maybe (putI 0) (\a -> putI 1 <> toAvro s a) v
-      [s, S.Null] -> maybe (putI 1) (\a -> putI 0 <> toAvro s a) v
+      [S.Null _, s] -> maybe (putI 0) (\a -> putI 1 <> toAvro s a) v
+      [s, S.Null _] -> maybe (putI 1) (\a -> putI 0 <> toAvro s a) v
       wrongOpts   -> error ("Unable to encode Maybe as " <> show wrongOpts)
   toAvro s _ = error ("Unable to encode Maybe as " <> show s)
 
