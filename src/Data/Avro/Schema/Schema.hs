@@ -23,7 +23,7 @@
 module Data.Avro.Schema.Schema
   (
    -- * Schema description types
-    Schema(.., Int', Long', Bytes', String')
+    Schema(.., Null', Boolean', Int', Long', Float', Double', Bytes', String', Array', Map')
   , DefaultValue(..)
   , Field(..), Order(..)
   , TypeName(..)
@@ -69,7 +69,7 @@ import           Data.Aeson             (FromJSON (..), ToJSON (..), object, (.!
 import qualified Data.Aeson             as A
 import qualified Data.Aeson.Key         as A
 import qualified Data.Aeson.KeyMap      as KM
-import           Data.Aeson.Types       (Parser, typeMismatch)
+import           Data.Aeson.Types       (Pair, Parser, typeMismatch)
 import qualified Data.ByteString        as B
 import qualified Data.Char              as Char
 import           Data.Function          (on)
@@ -88,6 +88,9 @@ import qualified Data.Vector            as V
 import           Prelude                as P
 
 import GHC.Generics (Generic)
+import Data.Void (Void)
+
+import Control.Monad.Writer.Strict (execWriter, tell)
 
 {- HLINT ignore "Reduce duplication"  -}
 {- HLINT ignore "Use &&"              -}
@@ -115,26 +118,33 @@ data DefaultValue
 data Schema
       =
       -- Basic types
-        Null
-      | Boolean
+        Null { logicalType :: LogicalType Void }
+      | Boolean { logicalType :: LogicalType Void }
       | Int    { logicalTypeI :: LogicalType LogicalTypeInt }
       | Long   { logicalTypeL :: LogicalType LogicalTypeLong }
-      | Float | Double
+      | Float  { logicalType :: LogicalType Void }
+      | Double { logicalType :: LogicalType Void }
       | Bytes  { logicalTypeB :: LogicalType LogicalTypeBytes }
       | String { logicalTypeS :: LogicalType LogicalTypeString }
-      | Array  { item :: Schema }
-      | Map    { values :: Schema }
+      | Array  { item :: Schema
+               , logicalType :: LogicalType Void
+               }
+      | Map    { values :: Schema
+               , logicalType :: LogicalType Void
+               }
       | NamedType TypeName
       -- Declared types
       | Record { name    :: TypeName
                , aliases :: [TypeName]
                , doc     :: Maybe Text
                , fields  :: [Field]
+               , logicalType :: LogicalType Void
                }
       | Enum { name    :: TypeName
              , aliases :: [TypeName]
              , doc     :: Maybe Text
              , symbols :: V.Vector Text
+             , logicalType :: LogicalType Void
              }
       | Union { options     :: V.Vector Schema
               }
@@ -145,14 +155,27 @@ data Schema
               }
     deriving (Ord, Show, Generic, NFData)
 
+pattern Null' :: Schema
+pattern Null' = Null NoLogicalType
+pattern Boolean' :: Schema
+pattern Boolean' = Boolean NoLogicalType
 pattern Int' :: Schema
 pattern Int' = Int NoLogicalType
 pattern Long' :: Schema
 pattern Long' = Long NoLogicalType
+pattern Float' :: Schema
+pattern Float' = Float NoLogicalType
+pattern Double' :: Schema
+pattern Double' = Double NoLogicalType
 pattern Bytes' :: Schema
 pattern Bytes' = Bytes NoLogicalType
 pattern String' :: Schema
 pattern String' = String NoLogicalType
+
+pattern Array' :: Schema -> Schema
+pattern Array' vs = Array vs NoLogicalType
+pattern Map' :: Schema -> Schema
+pattern Map' vs = Map vs NoLogicalType
 
 data Field = Field { fldName    :: Text
                    , fldAliases :: [Text]
@@ -314,23 +337,23 @@ data Decimal
   deriving (Eq, Show, Ord, Generic, NFData)
 
 instance Eq Schema where
-  Null == Null = True
-  Boolean == Boolean = True
+  Null lt1 == Null lt2 = lt1 == lt2
+  Boolean lt1 == Boolean lt2 = lt1 == lt2
   Int lt1 == Int lt2 = lt1 == lt2
   Long lt1 == Long lt2 = lt1 == lt2
-  Float == Float = True
-  Double == Double = True
+  Float lt1 == Float lt2 = lt1 == lt2
+  Double lt1 == Double lt2 = lt1 == lt2
   Bytes lt1 == Bytes lt2 = lt1 == lt2
   String lt1 == String lt2 = lt1 == lt2
 
-  Array ty == Array ty2 = ty == ty2
-  Map ty == Map ty2 = ty == ty2
+  Array ty lt1 == Array ty2 lt2 = ty == ty2 && lt1 == lt2
+  Map ty lt1 == Map ty2 lt2 = ty == ty2 && lt1 == lt2
   NamedType t == NamedType t2 = t == t2
 
-  Record name1 _ _ fs1 == Record name2 _ _ fs2 =
-    (name1 == name2) && (fs1 == fs2)
-  Enum name1 _ _ s == Enum name2 _ _ s2 =
-    (name1 == name2) && (s == s2)
+  Record name1 _ _ fs1 lt1 == Record name2 _ _ fs2 lt2 =
+    (name1 == name2) && (fs1 == fs2) && (lt1 == lt2)
+  Enum name1 _ _ s lt1 == Enum name2 _ _ s2 lt2 =
+    (name1 == name2) && (s == s2) && (lt1 == lt2)
   Union a == Union b = a == b
   Fixed name1 _ s lt1 == Fixed name2 _ s2 lt2 =
     (name1 == name2) && (s == s2) && (lt1 == lt2)
@@ -346,8 +369,10 @@ mkEnum :: TypeName
           -- ^ Optional documentation for the enum.
        -> [Text]
           -- ^ The symbols of the enum.
+       -> LogicalType Void
        -> Schema
-mkEnum name aliases doc symbols = Enum name aliases doc (V.fromList symbols)
+mkEnum name aliases doc symbols logicalType =
+  Enum name aliases doc (V.fromList symbols) logicalType
 
 -- | @mkUnion subTypes@ Defines a union of the provided subTypes.  N.B. it is
 -- invalid Avro to include another union or to have more than one of the same
@@ -477,12 +502,12 @@ instance Hashable TypeName where
 typeName :: Schema -> Text
 typeName = \case
   -- primitive types
-  Null -> "null"
-  Boolean -> "boolean"
+  Null _logical -> "null"
+  Boolean _logical -> "boolean"
   Int _logical -> "int"
   Long _logical -> "long"
-  Float -> "float"
-  Double -> "double"
+  Float _logical -> "float"
+  Double _logical -> "double"
   Bytes _logical -> "bytes"
   String _logical -> "string"
   -- named types
@@ -490,8 +515,8 @@ typeName = \case
   Enum { name } -> renderFullname name
   Fixed { name } -> renderFullname name
   -- other complex types
-  Map _ -> "map"
-  Array _ -> "array"
+  Map _ _ -> "map"
+  Array _ _ -> "array"
   -- unions do not have a name, it's invalid to call this function
   Union _ -> error "Invalid call to typeName: unions are not supported"
   -- and name references
@@ -531,12 +556,12 @@ parseSchemaJSON context = \case
     --     well as union) are permitted to be reused as type names. This can be confusing to the
     --     human reader, but is always unambiguous for binary serialization. Due to the limitations
     --     of JSON encoding, it is a best practice to use a namespace when using these names.
-    "null"                   -> return Null
-    "boolean"                -> return Boolean
+    "null"                   -> return $ Null NoLogicalType
+    "boolean"                -> return $ Boolean NoLogicalType
     "int"                    -> return $ Int NoLogicalType
     "long"                   -> return $ Long NoLogicalType
-    "float"                  -> return Float
-    "double"                 -> return Double
+    "float"                  -> return $ Float NoLogicalType
+    "double"                 -> return $ Double NoLogicalType
     "bytes"                  -> return $ Bytes NoLogicalType
     "string"                 -> return $ String NoLogicalType
     somename                 -> return $ NamedType $ mkTypeName context somename Nothing
@@ -547,8 +572,8 @@ parseSchemaJSON context = \case
   A.Object o -> do
     ty                        <- o .: "type"
     case ty of
-        "map"    -> Map <$> (parseSchemaJSON context =<< o .: "values")
-        "array"  -> Array <$> (parseSchemaJSON context =<< o .: "items")
+        "map"    -> Map <$> (parseSchemaJSON context =<< o .: "values") <*> withLogicalType' o
+        "array"  -> Array <$> (parseSchemaJSON context =<< o .: "items") <*> withLogicalType' o
         "record" -> do
           name       <- o .: "name"
           namespace  <- o .:? "namespace"
@@ -556,7 +581,8 @@ parseSchemaJSON context = \case
           aliases    <- mkAliases recName <$> (o .:? "aliases" .!= [])
           doc        <- o .:? "doc"
           fields     <- mapM (parseField recName) =<< (o .: "fields")
-          pure $ Record recName aliases doc fields
+          logicalType <- withLogicalType' o
+          pure $ Record recName aliases doc fields logicalType
         "enum"   -> do
           name        <- o .: "name"
           namespace   <- o .:? "namespace"
@@ -564,7 +590,8 @@ parseSchemaJSON context = \case
           aliases     <- mkAliases enumName <$> (o .:? "aliases" .!= [])
           doc         <- o .:? "doc"
           symbols     <- o .: "symbols"
-          pure $ mkEnum enumName aliases doc symbols
+          logicalType <- withLogicalType' o
+          pure $ mkEnum enumName aliases doc symbols logicalType
         "fixed"   -> do
           name         <- o .: "name"
           namespace    <- o .:? "namespace"
@@ -578,8 +605,8 @@ parseSchemaJSON context = \case
             -- spec also has 'uuid' here, but only when the fixed has size 16
             t -> pure $ UnknownLogicalType t
           pure $ Fixed fixedName aliases size logicalType
-        "null"    -> pure Null
-        "boolean" -> pure Boolean
+        "null"    -> Null <$> withLogicalType' o
+        "boolean" -> Boolean <$> withLogicalType' o
         "int"     -> do
           logicalType <- withLogicalType o $ \case
             "time-millis" -> pure $ KnownLogicalType TimeMillis
@@ -603,8 +630,8 @@ parseSchemaJSON context = \case
               KnownLogicalType . DecimalL <$> parseDecimal o
             t -> pure $ UnknownLogicalType t
           pure $ Long logicalType
-        "float"   -> pure Float
-        "double"  -> pure Double
+        "float"   -> Float <$> withLogicalType' o
+        "double"  -> Double <$> withLogicalType' o
         "bytes"   -> do
           logicalType <- withLogicalType o $ \case
             "decimal" -> KnownLogicalType . DecimalB <$> parseDecimal o
@@ -620,6 +647,9 @@ parseSchemaJSON context = \case
   invalid    -> typeMismatch "Invalid JSON for Avro Schema" invalid
 
   where
+    withLogicalType' :: A.Object -> Parser (LogicalType lt)
+    withLogicalType' o = withLogicalType o $ pure . UnknownLogicalType
+
     withLogicalType :: A.Object -> (Text -> Parser (LogicalType lt)) -> Parser (LogicalType lt)
     withLogicalType o f = do
       -- There's actually three cases:
@@ -687,8 +717,14 @@ schemaToJSON context = \case
   -- Primitives can be encoded as named type references e.g. "string", or fully as {"type":
   -- "string"}. The first one is the 'Parsing Canonical Form', but the latter is necessary when we
   -- add logical types.
-  Null            -> A.String "null"
-  Boolean         -> A.String "boolean"
+  Null lt ->
+    case lt of
+      NoLogicalType -> A.String "null"
+      UnknownLogicalType t -> object [ typeIs "null", logicalTypeIs t ]
+  Boolean lt ->
+    case lt of
+      NoLogicalType -> A.String "boolean"
+      UnknownLogicalType t -> object [ typeIs "boolean", logicalTypeIs t ]
   Int lt ->
     case lt of
       NoLogicalType ->
@@ -719,8 +755,14 @@ schemaToJSON context = \case
         object [ typeIs "long", logicalTypeIs "local-timestamp-micros" ]
       UnknownLogicalType t ->
         object [ typeIs "long", logicalTypeIs t ]
-  Float           -> A.String "float"
-  Double          -> A.String "double"
+  Float lt ->
+    case lt of
+      NoLogicalType -> A.String "float"
+      UnknownLogicalType t -> object [ typeIs "float", logicalTypeIs t ]
+  Double lt ->
+    case lt of
+      NoLogicalType -> A.String "double"
+      UnknownLogicalType t -> object [ typeIs "double", logicalTypeIs t ]
   Bytes lt ->
     case lt of
       NoLogicalType ->
@@ -737,44 +779,62 @@ schemaToJSON context = \case
         object [ typeIs "string", logicalTypeIs "uuid" ]
       UnknownLogicalType t ->
         object [ typeIs "string", logicalTypeIs t ]
-  Array tn        ->
-    object [ "type" .= ("array" :: Text), "items" .= schemaToJSON context tn ]
-  Map tn          ->
-    object [ "type" .= ("map" :: Text), "values" .= schemaToJSON context tn ]
+  Array tn logicalType ->
+    object $ execWriter $ do
+      tell [ typeIs "array"
+           , "items" .= schemaToJSON context tn
+           ]
+      case logicalType of
+        NoLogicalType -> pure ()
+        UnknownLogicalType t -> tell [ logicalTypeIs t ]
+  Map tn logicalType ->
+    object $ execWriter $ do
+      tell [ typeIs "map"
+           , "values" .= schemaToJSON context tn
+           ]
+      case logicalType of
+        NoLogicalType -> pure ()
+        UnknownLogicalType t -> tell [ logicalTypeIs t ]
   NamedType name  -> toJSON $ render context name
-  Record {..}     ->
-    let opts = catMaybes
-          [ ("doc" .=)   <$> doc
-          ]
-    in object $ opts ++
-       [ "type"    .= ("record" :: Text)
-       , "name"    .= render context name
-       , "aliases" .= (render (Just name) <$> aliases)
-       , "fields"  .= (fieldToJSON name <$> fields)
-       ]
-  Enum   {..} ->
-    let opts = catMaybes [("doc" .=) <$> doc]
-    in object $ opts ++
-       [ "type"    .= ("enum" :: Text)
-       , "name"    .= render context name
-       , "aliases" .= (render (Just name) <$> aliases)
-       , "symbols" .= symbols
-       ]
-  Union  {..} -> toJSON $ schemaToJSON context <$> options
-  Fixed  {..} ->
-    let basic =
-           [ "type"    .= ("fixed" :: Text)
+  Record { name, aliases, doc, fields, logicalType } ->
+    object $ execWriter $ do
+      tell [ typeIs "record"
+           , "name"    .= render context name
+           , "aliases" .= (render (Just name) <$> aliases)
+           , "fields"  .= (fieldToJSON name <$> fields)
+           ]
+      forM_ doc $ \d -> tell [ "doc" .= d ]
+      case logicalType of
+        NoLogicalType -> pure ()
+        UnknownLogicalType t -> tell [ logicalTypeIs t ]
+  Enum { name, aliases, doc, symbols, logicalType } ->
+    object $ execWriter $ do
+      tell [ typeIs "enum"
+           , "name"    .= render context name
+           , "aliases" .= (render (Just name) <$> aliases)
+           , "symbols" .= symbols
+           ]
+      forM_ doc $ \d -> tell [ "doc" .= d ]
+      case logicalType of
+        NoLogicalType -> pure ()
+        UnknownLogicalType t -> tell [ logicalTypeIs t ]
+  Union { options } -> toJSON $ schemaToJSON context <$> options
+  Fixed { name, aliases, size, logicalTypeF } ->
+    object $ execWriter $ do
+      tell [ typeIs "fixed"
            , "name"    .= render context name
            , "aliases" .= (render (Just name) <$> aliases)
            , "size"    .= size
            ]
-        extended = case logicalTypeF of
-          NoLogicalType       -> []
-          UnknownLogicalType t -> [ logicalTypeIs t ]
-          KnownLogicalType Duration -> [ logicalTypeIs "duration" ]
-          KnownLogicalType (DecimalF (Decimal prec sc)) ->
-            [ logicalTypeIs "decimal", "precision" .= prec, "scale" .= sc ]
-    in object (basic ++ extended)
+      case logicalTypeF of
+        NoLogicalType -> pure ()
+        UnknownLogicalType t -> tell [ logicalTypeIs t ]
+        KnownLogicalType Duration -> tell [ logicalTypeIs "duration" ]
+        KnownLogicalType (DecimalF (Decimal prec sc)) -> do
+          tell [ logicalTypeIs "decimal"
+               , "precision" .= prec
+               , "scale" .= sc
+               ]
   where render context1 typeName1
           | Just ctx <- context1
           , namespace ctx == namespace typeName1 = baseName typeName1
@@ -797,8 +857,12 @@ schemaToJSON context = \case
         adjustDefaultValue (DUnion _ _ val) = val
         adjustDefaultValue ty               = ty
 
+        typeIs :: Text -> Pair
         typeIs ty = "type" .= (ty :: Text)
+        logicalTypeIs :: Text -> Pair
         logicalTypeIs lty = "logicalType" .= (lty :: Text)
+
+
 
 
 instance ToJSON DefaultValue where
@@ -925,22 +989,22 @@ parseAvroJSON union env ty av                  =
           _ -> fail $ "Expected type String, Enum, Bytes, or Fixed, but found (Type,Value)="
              <> show (ty, av)
       A.Bool b       -> case ty of
-                          Boolean -> return $ DBoolean b
+                          Boolean _ -> return $ DBoolean b
                           _       -> avroTypeMismatch ty "boolean"
       A.Number i     ->
         case ty of
-          Int _  -> return $ DInt    ty (floor i)
-          Long _ -> return $ DLong   ty (floor i)
-          Float  -> return $ DFloat  ty (realToFrac i)
-          Double -> return $ DDouble ty (realToFrac i)
-          _      -> avroTypeMismatch ty "number"
+          Int _    -> return $ DInt    ty (floor i)
+          Long _   -> return $ DLong   ty (floor i)
+          Float _  -> return $ DFloat  ty (realToFrac i)
+          Double _ -> return $ DDouble ty (realToFrac i)
+          _        -> avroTypeMismatch ty "number"
       A.Array vec    ->
         case ty of
-          Array t -> DArray <$> V.mapM (parseAvroJSON union env t) vec
-          _       -> avroTypeMismatch ty "array"
+          Array t _ -> DArray <$> V.mapM (parseAvroJSON union env t) vec
+          _         -> avroTypeMismatch ty "array"
       A.Object obj ->
         case ty of
-          Map mTy     -> DMap <$> mapM (parseAvroJSON union env mTy) (KM.toHashMapText obj)
+          Map mTy _ -> DMap <$> mapM (parseAvroJSON union env mTy) (KM.toHashMapText obj)
           Record {..} ->
            do let lkAndParse f =
                     case KM.lookup (A.fromText (fldName f)) obj of
@@ -951,8 +1015,8 @@ parseAvroJSON union env ty av                  =
               DRecord ty . HashMap.fromList <$> mapM (\f -> (fldName f,) <$> lkAndParse f) fields
           _ -> avroTypeMismatch ty "object"
       A.Null -> case ty of
-                  Null -> return DNull
-                  _    -> avroTypeMismatch ty "null"
+                  Null _ -> return DNull
+                  _      -> avroTypeMismatch ty "null"
 
 -- | Parses a string literal into a bytestring in the format expected
 -- for bytes and fixed values. Will fail if every character does not
@@ -1029,10 +1093,13 @@ buildTypeEnvironment failure from =
 --
 -- This extends recursively: two records match if they have the same
 -- name, the same number of fields and the fields all match.
+--
+-- TODO: resolve inconsistencies in logical type handling, for records they
+-- don't count, but for the fallthrough case (using Eq Schema) they /do/ count.
 matches :: Schema -> Schema -> Bool
 matches n@NamedType{} t             = typeName n == typeName t
 matches t n@NamedType{}             = typeName t == typeName n
-matches (Array itemA) (Array itemB) = matches itemA itemB
+matches (Array itemA ltA) (Array itemB ltB) = matches itemA itemB && ltA == ltB
 matches a@Record{} b@Record{}       =
   and [ name a == name b
       , length (fields a) == length (fields b)

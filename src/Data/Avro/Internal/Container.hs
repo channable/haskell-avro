@@ -274,7 +274,7 @@ packContainerBlocksWithSync codec sch syncBytes blocks =
 containerHeaderWithSync :: Codec -> Schema -> BL.ByteString -> Builder
 containerHeaderWithSync codec sch syncBytes =
   lazyByteString avroMagicBytes
-    <> toAvro (Schema.Map Schema.Bytes') headers
+    <> toAvro (Schema.Map' Schema.Bytes') headers
     <> lazyByteString syncBytes
   where
     avroMagicBytes :: BL.ByteString

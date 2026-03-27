@@ -9,10 +9,10 @@ import           Hedgehog.Range (Range)
 import qualified Hedgehog.Range as Range
 
 null :: MonadGen m => m Schema
-null = pure Null
+null = pure Null'
 
 boolean :: MonadGen m => m Schema
-boolean = pure Boolean
+boolean = pure Boolean'
 
 decimalGen :: MonadGen m => m Decimal
 decimalGen = Decimal

@@ -47,10 +47,10 @@ instance HasAvroSchema Word64 where
   schema = Tagged S.Long'
 
 instance HasAvroSchema Bool where
-  schema = Tagged S.Boolean
+  schema = Tagged S.Boolean'
 
 instance HasAvroSchema () where
-  schema = Tagged S.Null
+  schema = Tagged S.Null'
 
 instance HasAvroSchema Int where
   schema = Tagged S.Long'
@@ -68,10 +68,10 @@ instance HasAvroSchema Int64 where
   schema = Tagged S.Long'
 
 instance HasAvroSchema Double where
-  schema = Tagged S.Double
+  schema = Tagged S.Double'
 
 instance HasAvroSchema Float where
-  schema = Tagged S.Float
+  schema = Tagged S.Float'
 
 instance HasAvroSchema Text.Text where
   schema = Tagged S.String'
@@ -112,40 +112,40 @@ instance (HasAvroSchema a, HasAvroSchema b) => HasAvroSchema (Either a b) where
   schema = Tagged $ S.Union $ V.fromListN 2 [untag @a schema, untag @b schema]
 
 instance (HasAvroSchema a) => HasAvroSchema (Map.Map Text a) where
-  schema = wrapTag @a S.Map schema
+  schema = wrapTag @a S.Map' schema
 
 instance (HasAvroSchema a) => HasAvroSchema (HashMap.HashMap Text a) where
-  schema = wrapTag @a S.Map schema
+  schema = wrapTag @a S.Map' schema
 
 instance (HasAvroSchema a) => HasAvroSchema (Map.Map TL.Text a) where
-  schema = wrapTag @a S.Map schema
+  schema = wrapTag @a S.Map' schema
 
 instance (HasAvroSchema a) => HasAvroSchema (HashMap.HashMap TL.Text a) where
-  schema = wrapTag @a S.Map schema
+  schema = wrapTag @a S.Map' schema
 
 instance (HasAvroSchema a) => HasAvroSchema (Map.Map String a) where
-  schema = wrapTag @a S.Map schema
+  schema = wrapTag @a S.Map' schema
 
 instance (HasAvroSchema a) => HasAvroSchema (HashMap.HashMap String a) where
-  schema = wrapTag @a S.Map schema
+  schema = wrapTag @a S.Map' schema
 
 instance (HasAvroSchema a) => HasAvroSchema (Maybe a) where
-  schema = Tagged $ mkUnion (S.Null:| [untag @a schema])
+  schema = Tagged $ mkUnion (S.Null S.NoLogicalType :| [untag @a schema])
 
 instance (HasAvroSchema a) => HasAvroSchema [a] where
-  schema = wrapTag @a S.Array schema
+  schema = wrapTag @a S.Array' schema
 
 instance (HasAvroSchema a, Ix i) => HasAvroSchema (Ar.Array i a) where
-  schema = wrapTag @a S.Array schema
+  schema = wrapTag @a S.Array' schema
 
 instance HasAvroSchema a => HasAvroSchema (V.Vector a) where
-  schema = wrapTag @a S.Array schema
+  schema = wrapTag @a S.Array' schema
 
 instance HasAvroSchema a => HasAvroSchema (U.Vector a) where
-  schema = wrapTag @a S.Array schema
+  schema = wrapTag @a S.Array' schema
 
 instance HasAvroSchema a => HasAvroSchema (S.Set a) where
-  schema = wrapTag @a S.Array schema
+  schema = wrapTag @a S.Array' schema
 
 wrapTag :: (Schema -> Schema) -> Tagged a Schema -> Tagged b Schema
 wrapTag f = Tagged . f . untag

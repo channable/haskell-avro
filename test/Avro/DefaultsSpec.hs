@@ -28,7 +28,7 @@ spec = describe "Avro.DefaultsSpec: Schema with named types" $ do
       msgSchema = schema'MaybeTest
       fixedSchema = schema'FixedTag
       defaults = fldDefault <$> fields msgSchema
-    in defaults `shouldBe` [ Just $ DUnion (V.fromList [Null, String']) Null DNull
+    in defaults `shouldBe` [ Just $ DUnion (V.fromList [Null', String']) Null' DNull
                            , Just $ DFixed fixedSchema "\0\42\255"
                            , Just $ DBytes Bytes' "\0\37\255"
                            ]
