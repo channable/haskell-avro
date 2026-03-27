@@ -426,37 +426,45 @@ mkFieldTypeName namespaceBehavior = \case
   Schema.Null             -> [t| () |]
   Schema.Boolean          -> [t| Bool |]
 
-  Schema.Long (Just (Schema.DecimalL (Schema.Decimal p s)))
-    -> [t| Schema.Decimal $(TH.litT $ TH.numTyLit p) $(TH.litT $ TH.numTyLit s) |]
-  Schema.Long (Just Schema.TimeMicros)
-    -> [t| DiffTime |]
-  Schema.Long (Just Schema.TimestampMicros)
-    -> [t| UTCTime |]
-  Schema.Long (Just Schema.TimestampMillis)
-    -> [t| UTCTime |]
-  Schema.Long (Just Schema.LocalTimestampMillis)
-    -> [t| LocalTime |]
-  Schema.Long (Just Schema.LocalTimestampMicros)
-    -> [t| LocalTime |]
-  Schema.Long Nothing
+  Schema.Long Schema.NoLogicalType
     -> [t| Int64 |]
-
-  Schema.Int (Just Schema.Date)
-    -> [t| Day |]
-  Schema.Int (Just Schema.TimeMillis)
+  Schema.Long (Schema.UnknownLogicalType _)
+    -> [t| Int64 |]
+  Schema.Long (Schema.KnownLogicalType (Schema.DecimalL (Schema.Decimal p s)))
+    -> [t| Schema.Decimal $(TH.litT $ TH.numTyLit p) $(TH.litT $ TH.numTyLit s) |]
+  Schema.Long (Schema.KnownLogicalType Schema.TimeMicros)
     -> [t| DiffTime |]
-  Schema.Int _
+  Schema.Long (Schema.KnownLogicalType Schema.TimestampMicros)
+    -> [t| UTCTime |]
+  Schema.Long (Schema.KnownLogicalType Schema.TimestampMillis)
+    -> [t| UTCTime |]
+  Schema.Long (Schema.KnownLogicalType Schema.LocalTimestampMillis)
+    -> [t| LocalTime |]
+  Schema.Long (Schema.KnownLogicalType Schema.LocalTimestampMicros)
+    -> [t| LocalTime |]
+
+  Schema.Int (Schema.NoLogicalType)
     -> [t| Int32 |]
+  Schema.Int (Schema.UnknownLogicalType _)
+    -> [t| Int32 |]
+  Schema.Int (Schema.KnownLogicalType Schema.Date)
+    -> [t| Day |]
+  Schema.Int (Schema.KnownLogicalType Schema.TimeMillis)
+    -> [t| DiffTime |]
+  Schema.Int (Schema.KnownLogicalType (Schema.DecimalI _))
+    -> [t| Int32 |]   -- This is probably wrong, but it's what the old code did..
   Schema.Float
     -> [t| Float |]
   Schema.Double
     -> [t| Double |]
   Schema.Bytes _
     -> [t| ByteString |]
-  Schema.String Nothing
+  Schema.String Schema.NoLogicalType
     -> [t| Text |]
-  Schema.String (Just Schema.UUID) ->
-    [t| UUID |]
+  Schema.String (Schema.UnknownLogicalType _)
+    -> [t| Text |]
+  Schema.String (Schema.KnownLogicalType Schema.UUID)
+    -> [t| UUID |]
   Schema.Union branches
     -> union (Foldable.toList branches)
   Schema.Record n _ _ _

@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# OPTIONS_GHC -Wno-x-partial #-}
 -- | Avro supports a JSON representation of Avro objects alongside the
 -- Avro binary format. An Avro schema can be used to generate and
 -- validate JSON representations of Avro objects.
@@ -62,19 +63,12 @@ module Data.Avro.JSON where
 import qualified Data.Aeson           as Aeson
 import qualified Data.Aeson.Key       as K
 import qualified Data.Aeson.KeyMap    as KM
-import           Data.ByteString.Lazy (ByteString)
 import qualified Data.Foldable        as Foldable
-import           Data.HashMap.Strict  ((!))
 import qualified Data.HashMap.Strict  as HashMap
-import           Data.List.NonEmpty   (NonEmpty (..))
-import qualified Data.List.NonEmpty   as NE
-import           Data.Tagged
 import qualified Data.Text            as Text
 
-import qualified Data.Avro.HasAvroSchema as Schema
 import           Data.Avro.Schema.Schema (DefaultValue (..), Result (..), Schema, parseAvroJSON)
 import qualified Data.Avro.Schema.Schema as Schema
-import qualified Data.Vector             as V
 
 decodeAvroJSON :: Schema -> Aeson.Value -> Result DefaultValue
 decodeAvroJSON schema json =

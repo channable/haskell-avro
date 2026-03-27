@@ -16,6 +16,7 @@ deriving instance Lift Schema.Field
 deriving instance Lift Schema.Order
 deriving instance Lift Schema.TypeName
 deriving instance Lift Schema.Decimal
+deriving instance Lift a => Lift (Schema.LogicalType a)
 deriving instance Lift Schema.LogicalTypeBytes
 deriving instance Lift Schema.LogicalTypeFixed
 deriving instance Lift Schema.LogicalTypeInt

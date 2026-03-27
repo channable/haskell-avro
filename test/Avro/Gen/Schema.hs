@@ -20,13 +20,30 @@ decimalGen = Decimal
   <*> Gen.integral (Range.linear 0 10)
 
 int :: MonadGen m => m Schema
-int = do
-  dec <- decimalGen
-  Int <$> Gen.maybe (Gen.element [DecimalI dec, Date, TimeMillis])
+int =
+  fmap Int $ logicalTypeGen $ Gen.choice [
+    DecimalI <$> decimalGen,
+    pure Date,
+    pure TimeMillis
+  ]
 
 long :: MonadGen m => m Schema
-long = do
-  dec <- decimalGen
-  Long <$> Gen.maybe (Gen.element
-    [DecimalL dec, TimeMicros, TimestampMillis,
-     TimestampMicros, LocalTimestampMillis, LocalTimestampMicros])
+long =
+  fmap Long $ logicalTypeGen $ Gen.choice [
+    DecimalL <$> decimalGen,
+    pure TimeMicros,
+    pure TimestampMillis,
+    pure TimestampMicros,
+    pure LocalTimestampMillis,
+    pure LocalTimestampMicros
+  ]
+
+
+logicalTypeGen :: MonadGen m => m a -> m (LogicalType a)
+logicalTypeGen genKnownLogicalType =
+  Gen.sized $ \n ->
+    Gen.frequency [
+        (2, pure NoLogicalType)
+      , (1, UnknownLogicalType <$> Gen.text (Range.linear 0 20) Gen.alphaNum)
+      , (1 + fromIntegral n, KnownLogicalType <$> genKnownLogicalType)
+      ]
