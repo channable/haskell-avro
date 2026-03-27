@@ -15,7 +15,6 @@ import           Data.Int
 import           Data.Ix                  (Ix)
 import           Data.List.NonEmpty       (NonEmpty (..))
 import qualified Data.Map                 as Map
-import           Data.Monoid              ((<>))
 import           Data.Proxy
 import qualified Data.Set                 as S
 import           Data.Tagged
